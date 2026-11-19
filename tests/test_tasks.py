@@ -295,3 +295,21 @@ def test_cli_task_subcommand_roundtrip(tmp_path):
     assert _cli("done", "T-90", "--skip-verify").returncode == 0
     bd = _cli("board")
     assert bd.returncode == 0 and "T-90" in bd.stdout and "2/2" in bd.stdout
+
+
+def test_cross_project_sibling_scope_globs(tmp_path):
+    ws = tmp_path / "AI项目"
+    hub = ws / "成果整理"
+    rev = ws / "逆向工程"
+    tdir = hub / ".tasks"
+    (rev / "work").mkdir(parents=True)
+    tk.create_task(tdir, "跨仓逆向任务", task_id="T-95", scope_globs=["逆向工程/work/**"])
+    ok, _, _ = tk.claim_task(tdir, "T-95", owner="ag", session="s-ag")
+    assert ok
+
+    assert tk.check_write_scope(tdir, rev / "work" / "a.py", session="s-ag", owner="ag", lib_root=hub)[0] is True
+    ok_out, msg_out = tk.check_write_scope(tdir, rev / "other.py", session="s-ag", owner="ag", lib_root=hub)
+    assert not ok_out and "超出当前任务" in msg_out
+    ok_other, msg_other = tk.check_write_scope(tdir, rev / "work" / "a.py", session="s-zc", owner="zc", lib_root=hub)
+    assert not ok_other and "归属活跃任务" in msg_other
+    assert tk.check_write_scope(tdir, tmp_path / "outside" / "temp.py", session="s-ag", owner="ag", lib_root=hub)[0] is True

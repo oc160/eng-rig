@@ -31,6 +31,7 @@ LIB = Path(__file__).resolve().parent.parent
 HOOK = LIB / "_meta" / "hooks" / "agent_hooks.py"
 CONFIG = Path(os.environ.get("ZCODE_CONFIG", str(Path.home() / ".zcode" / "cli" / "config.json")))
 AG_HOOKS = Path(os.environ.get("AG_HOOKS", str(LIB / ".agents" / "hooks.json")))
+AG_GLOBAL_HOOKS = Path(os.environ.get("AG_GLOBAL_HOOKS", str(Path.home() / ".gemini" / "config" / "hooks.json")))
 PY = sys.executable
 
 EVENTS = {
@@ -50,9 +51,9 @@ MATCHER = {
 # 因 Antigravity 执行 hooks.json 时 cwd 为 .agents/ 目录。
 
 
-def _ag_arg(path_str: str, is_hook: bool = False) -> str:
+def _ag_arg(path_str: str, is_hook: bool = False, allow_rel: bool = True) -> str:
     """Antigravity 在 Windows 下通过 cmd /c + Go 参数转义执行 command，路径含双引号会变成 \"，
-    故仅在含空格时优先转 8.3 短路径（若仍含空格，HOOK 回退相对 .agents 的路径，PY 回退 python）。"""
+    故仅在含空格时优先转 8.3 短路径（若仍含空格，本地模式回退相对路径，全局模式回退双引号）。"""
     s = str(path_str)
     if os.name != "nt":
         import shlex
@@ -64,12 +65,12 @@ def _ag_arg(path_str: str, is_hook: bool = False) -> str:
     if ctypes.windll.kernel32.GetShortPathNameW(s, buf, 1024) and buf.value and " " not in buf.value:
         return buf.value
     if is_hook:
-        return "../_meta/hooks/agent_hooks.py"
+        return "../_meta/hooks/agent_hooks.py" if allow_rel else f'"{s}"'
     return "python"
 
 
-def build_antigravity_hook():
-    cmd_base = f"{_ag_arg(PY)} {_ag_arg(HOOK, is_hook=True)} "
+def build_antigravity_hook(allow_rel: bool = True):
+    cmd_base = f"{_ag_arg(PY)} {_ag_arg(HOOK, is_hook=True, allow_rel=allow_rel)} "
     return {
         "SessionStart": [{"type": "command", "command": cmd_base + "--event=start", "timeout": 20}],
         "PreInvocation": [{"type": "command", "command": cmd_base + "--event=prompt", "timeout": 20}],
@@ -82,25 +83,31 @@ def build_antigravity_hook():
     }
 
 
-def write_antigravity_hooks(dry=False):
+def _merge_ag_hook_file(path: Path, allow_rel: bool, dry: bool) -> None:
     doc = {}
-    if AG_HOOKS.exists():
+    if path.exists():
         try:
-            old = json.loads(AG_HOOKS.read_text(encoding="utf-8"))
+            old = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(old, dict):
                 doc = old
         except ValueError:
             pass
     doc.pop("hooks", None)                      # 清理早期未对齐的顶层键
-    doc["asset-hub"] = build_antigravity_hook()
+    doc["asset-hub"] = build_antigravity_hook(allow_rel=allow_rel)
     if dry:
-        print("（dry-run）将写入 " + str(AG_HOOKS) + "：")
+        print("（dry-run）将写入 " + str(path) + "：")
         print(json.dumps(doc, ensure_ascii=False, indent=2))
         return
-    AG_HOOKS.parent.mkdir(parents=True, exist_ok=True)
-    AG_HOOKS.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
-                        encoding="utf-8", newline="")
-    print("✓ Antigravity hooks 已写入 " + str(AG_HOOKS) + "（幂等更新）")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8", newline="")
+    print("✓ Antigravity hooks 已写入 " + str(path) + "（幂等更新）")
+
+
+def write_antigravity_hooks(dry=False):
+    _merge_ag_hook_file(AG_HOOKS, allow_rel=True, dry=dry)
+    if os.environ.get("AG_GLOBAL_HOOKS") or not os.environ.get("AG_HOOKS"):
+        _merge_ag_hook_file(AG_GLOBAL_HOOKS, allow_rel=False, dry=dry)
 
 
 def build_event(event, args):

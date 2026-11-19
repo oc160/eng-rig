@@ -468,7 +468,7 @@ def _match_any_scope(rel: str, globs: list) -> bool:
 
 def check_write_scope(tdir: Path, target_path, session: str = "", owner: str = "",
                       lib_root=None, now=None) -> tuple:
-    """PreToolUse 越界硬拦截：保护他人活跃锁区，限制自身不超出声明的 scope_globs。"""
+    """PreToolUse 越界硬拦截：保护他人活跃锁区，限制自身不超出声明的 scope_globs（支持跨兄弟项目路径）。"""
     tdir = Path(tdir)
     if not tdir.is_dir():
         return True, ""
@@ -480,27 +480,37 @@ def check_write_scope(tdir: Path, target_path, session: str = "", owner: str = "
     tp = Path(target_path)
     if not tp.is_absolute():
         tp = root / tp
+    tp_res = tp.resolve()
+    abs_posix = tp_res.as_posix()
+    in_ws = True
     try:
-        rel = tp.resolve().relative_to(root).as_posix()
+        rels = [tp_res.relative_to(root).as_posix()]
     except ValueError:
-        return True, ""
-    if rel == ".tasks" or rel.startswith(".tasks/") or rel.startswith(".git/"):
+        try:
+            rels = [tp_res.relative_to(root.parent).as_posix(), abs_posix]
+        except ValueError:
+            rels = [abs_posix]
+            in_ws = False
+    rel = rels[0]
+    if any(r == ".tasks" or r.startswith((".tasks/", ".git/")) or "/.git/" in r or "/.tasks/" in r for r in rels):
         return True, ""
 
     mine = [t for t in active if _same_actor(t, session=session, owner=owner)]
     others = [t for t in active if t not in mine]
 
     for t in others:
-        if t.get("scope_globs") and _match_any_scope(rel, t["scope_globs"]):
+        if t.get("scope_globs") and any(_match_any_scope(r, t["scope_globs"]) for r in rels):
             holder = t.get("owner") or t.get("session") or "其他代理"
             return False, (
                 f"拒绝越界写入：{rel} 归属活跃任务 {t['id']} "
                 f"(owner={holder}, 租约至 {t.get('lease_until')})"
             )
 
+    if not in_ws:
+        return True, ""
     scoped_mine = [t for t in mine if t.get("scope_globs")]
     if mine and len(scoped_mine) == len(mine):
-        if not any(_match_any_scope(rel, t["scope_globs"]) for t in scoped_mine):
+        if not any(_match_any_scope(r, t["scope_globs"]) for t in scoped_mine for r in rels):
             primary = scoped_mine[0]
             return False, (
                 f"拒绝越界写入：{rel} 超出当前任务 {primary['id']} "

@@ -49,3 +49,16 @@ def test_post_tool_matcher(tmp_path):
     run(cfg, tmp_path / "hooks.json")
     d = json.loads(cfg.read_text(encoding="utf-8"))
     assert d["hooks"]["events"]["PostToolUse"][0]["matcher"] == "Write|Edit|ApplyPatch"
+
+
+def test_global_antigravity_hooks_written(tmp_path):
+    cfg = tmp_path / "config.json"
+    ag = tmp_path / "local_hooks.json"
+    ag_global = tmp_path / "global_hooks.json"
+    env = {**os.environ, "ZCODE_CONFIG": str(cfg), "AG_HOOKS": str(ag), "AG_GLOBAL_HOOKS": str(ag_global)}
+    r = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0
+    gd = json.loads(ag_global.read_text(encoding="utf-8"))
+    cmd = gd["asset-hub"]["SessionStart"][0]["command"]
+    assert "agent_hooks.py" in cmd and "../_meta/" not in cmd
