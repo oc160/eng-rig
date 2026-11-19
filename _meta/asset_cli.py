@@ -193,6 +193,7 @@ def build_index():
         "entry_count": parsed,
         "dropped_rows": dropped,
         "assets": assets,
+        "boundaries": H.boundary_assets(LIB / "_meta" / "能力边界台账.yaml"),
     }
 
 
@@ -517,20 +518,23 @@ def cmd_find(argv):
         _remember_injection(session, qid, hits[0][1]["id"], hits[0][1].get("path", ""), qh)
     rels = [r for r in _related_assets([a for _, a in hits], data, scope=scope)
             if not _denied_by_name(query, r)]
+    b_hits = _indexer().match_boundaries(query, data, scope, _sp())
     if "--format=context" in argv:                 # L2 宿主 AI 友好输出（review Q7）
         for i, (s, a) in enumerate(hits, 1):
             print(f"- {a['name']}（{a['kind']}）：{a['summary']} → {a['path']}")
         for r in rels:
             print(f"- [同类思路] {r['name']}（{r['kind']}）：{r['summary']} → {r['path']}")
+        for _, b in b_hits:
+            print(f"- [边界避坑] {b['name']}：{b['summary']} → {b['path']}")
         print('用法：让 AI 读取上述 SKILL.md/资产卡后执行；手动查询 asset find "<任务原话>"')
         return 0
     if "--json" in argv:
         print(json.dumps({"query": query, "stale": stale,
                           "results": [{"score": s, **a} for s, a in hits],
-                          "related": rels},
+                          "related": rels, "boundaries": [{"score": s, **b} for s, b in b_hits]},
                          ensure_ascii=False, indent=2))
         return 0
-    if not hits:
+    if not hits and not b_hits:
         print("（无匹配资产；可试更具体的关键词，或直接说明任务让 AI 判断）")
         return 0
     for i, (s, a) in enumerate(hits, 1):
@@ -542,6 +546,10 @@ def cmd_find(argv):
         print("💡 同类思路参考（1跳关联）：")
         for r in rels:
             print(f"   ↳ [{r['kind']}] {r['name']} — {r['summary']} | {r['path']}")
+    if b_hits:
+        print("⚠ 能力边界避坑（已知现象/退路）：")
+        for _, b in b_hits:
+            print(f"   ↳ [{b['name']}] {b['summary']} | {b['path']}")
     if stale:
         print("（索引已按当前文件重建；如需持久化运行 index）", file=sys.stderr)
     return 0
@@ -950,38 +958,30 @@ def cmd_retro_stats(argv):
     if not RETRO.exists():
         print("暂无 retro 记录（收尾时 record-retro 一条）")
         return 0
-    from collections import Counter
     recs = []
     for l in RETRO.read_text(encoding="utf-8", errors="ignore").splitlines():
         try:
             recs.append(json.loads(l))
         except ValueError:
             continue
-    dev = Counter(r.get("deviation", "") for r in recs if r.get("deviation"))
-    rep = {k: v for k, v in dev.items() if v >= 2}
+    H_in = _ingesth()
+    rep_items = H_in.aggregate_retro_proofs(recs)
+    dev_total = sum(1 for r in recs if (r.get("deviation") or "").strip() and r.get("deviation") not in ("none", "无"))
     produced = sum(1 for r in recs if r.get("verdict") == "有产出")
-    total_dev = sum(dev.values())
-    rep_occ = sum(rep.values())
-    print(f"retro 记录 {len(recs)} 条；有产出 {produced} 条；偏差 {total_dev} 条中重复 {rep_occ} 条"
-          f"（重复发生率 {rep_occ}/{total_dev}——同类偏差反复出现=该条一直没被资产化）：")
-    converted = 0
-    q = DEBTS
-    qtext = q.read_text(encoding="utf-8", errors="ignore") if q.exists() else ""
-    today = datetime.now().strftime("%Y-%m-%d")
-    for k, v in sorted(rep.items(), key=lambda x: -x[1])[:10]:
-        print(f"  ×{v}  {k[:60]}")
-        if k[:40] not in qtext:   # 同文已挂账则不重复追加
-            if not q.exists():    # 兜底：账本缺失时带表头建（正常永不触发）
-                q.parent.mkdir(parents=True, exist_ok=True)
-                q.write_text("# 待改进队列\n\n", encoding="utf-8", newline="\n")
-            with q.open("a", encoding="utf-8", newline="\n") as f:
-                f.write(f"- {today} | 重复偏差 | retro 偏差×{v}：{k[:80]} | 资产化该场景（改 canonical 或新技能）"
-                        f"后 retro 再记录时归零 | open\n")
-            converted += 1
-    if not rep:
-        print("  （暂无重复）")
+    rep_occ = sum(it["count"] for it in rep_items)
+    print(f"retro 记录 {len(recs)} 条；有产出 {produced} 条；偏差 {dev_total} 条中重复 {rep_occ} 条"
+          f"（重复发生率 {rep_occ}/{dev_total}——同类偏差反复出现=该条一直没被资产化）：")
+    for it in rep_items[:10]:
+        print(f"  ×{it['count']}  {it['deviation']}  [证据:{','.join(it['proofs'][-3:])}]")
+    qtext = DEBTS.read_text(encoding="utf-8", errors="ignore") if DEBTS.exists() else ""
+    new_qtext, converted, promos = H_in.merge_retro_debts(qtext, datetime.now().strftime("%Y-%m-%d"), rep_items[:10])
     if converted:
-        print(f"  → W1-9 自动转化：{converted} 条已追加至 _meta/待改进.md（类别=重复偏差）")
+        H_in.atomic_write_text(DEBTS, new_qtext)
+        print(f"  → W1-9 证据链同步：{converted} 条已更新/追加至 _meta/待改进.md（含 proof count）")
+    for it in promos:
+        print(f"  [晋升建议] 偏离「{it['deviation']}」已累计 {it['count']} 次证据 ({','.join(it['proofs'][-3:])})，建议升格为 pre-commit 检查项或 SKILL.md 规则")
+    if not rep_items:
+        print("  （暂无重复）")
     if len(recs) < 20:
         print("  ! 样本不足 20 条——重复发生率仅作方向参考（W1 周报阈值纪律）")
     return 0
@@ -1061,6 +1061,10 @@ def cmd_inbox_triage(argv):
     产出 _meta/inbox分诊_<日期>.md：每簇=同 source 的全部捕获（版本族自然归并），
     按件数降序，附机器建议（合并/新资产/仅归档/弃用由人最终拍板）。"""
     from collections import Counter
+    day = datetime.now().strftime("%Y-%m-%d")
+    if "--redact" in argv:
+        n_res = _ingesth().rescue_staging(STAGING, INBOX, LIB / "_meta" / "gate_check.py", day)
+        print(f"脱敏放行：{n_res} 件从隔离区救回 inbox（<REDACTED> 脱敏并通过二次预扫）")
     groups = {}
     for m in (INBOX.rglob("*.meta.json") if INBOX.exists() else []):
         try:
@@ -1069,7 +1073,6 @@ def cmd_inbox_triage(argv):
             continue
         groups.setdefault(d.get("source", "?"), []).append((m, d))
     rows = sorted(groups.items(), key=lambda kv: -len(kv[1]))
-    day = datetime.now().strftime("%Y-%m-%d")
     total = sum(len(v) for _, v in rows)
     lines = [f"# inbox 分诊报告（{day}）", "",
              f"共 **{total} 件 / {len(rows)} 簇**——按簇裁决，不逐件通读（review 二轮 Q5）。",

@@ -252,3 +252,43 @@ def inherit_anti(assets):
             src = next((s for s in skills.values() if stem in (s.get("text") or "")), None)
         if src and src.get("anti_triggers"):
             a["anti_triggers"] = list(src["anti_triggers"])
+
+
+def boundary_assets(yaml_path):
+    """能力边界台账 → 活跃避坑观测列表（独立存储，不入 data['assets'] 以免偏移 IDF 基线）。"""
+    if not yaml_path or not Path(yaml_path).is_file():
+        return []
+    text = Path(yaml_path).read_text(encoding="utf-8", errors="replace")
+    out = []
+    for blk in re.split(r"(?m)^(?=-\s+id:\s*B-\d+)", text):
+        m_id = re.match(r"^-\s+id:\s*(B-\d+)", blk)
+        if not m_id:
+            continue
+        bid = m_id.group(1)
+        kv = {m.group(1): re.sub(r"\s+", " ", re.sub(r"\\\s+", " ", m.group(2))).strip().strip("'\"")
+              for m in re.finditer(r"^  (分类|关联资产|现象|复现|当时退路|状态):\s*(.*?)(?=^  [\u4e00-\u9fff\w]+:|\Z)",
+                                   blk, re.M | re.S)}
+        if kv.get("状态") in ("已解决", "resolved"):
+            continue
+        asset, phenom, repro, fb = (kv.get(k, "") for k in ("关联资产", "现象", "复现", "当时退路"))
+        raw_t = [bid] + ([asset, Path(asset).stem] if asset and asset != "null" else [])
+        raw_t += re.findall(r"[A-Za-z_][A-Za-z0-9_.-]{2,}", f"{phenom} {repro}")
+        trigs = list(dict.fromkeys(t for t in raw_t
+                                   if len(t) >= 3 and t.lower() not in {"null", "agent", "true", "false", "none"}))[:24]
+        out.append({
+            "id": f"boundary:{bid}", "kind": "boundary", "name": f"{bid} ({kv.get('分类', '')})",
+            "summary": one_line(f"{phenom[:40]} → 退路:{fb}", 88),
+            "text": f"{bid} {asset} {phenom} {repro} {fb}"[:600],
+            "triggers": trigs, "anti_triggers": [], "path": "_meta/能力边界台账.yaml", "visibility": "internal",
+        })
+    return out
+
+
+def match_boundaries(query, data, scope=None, sp=None, limit=2, min_score=5.5):
+    """按检索词匹配活跃边界观测条目（只作 find 提示，不进 select_injection）。"""
+    bounds = data.get("boundaries") or []
+    if not bounds or not query:
+        return []
+    hits = _scorer().search_rows(query, limit, scope, {"assets": bounds}, sp)
+    return [(s, b) for s, b in hits if s >= min_score]
+

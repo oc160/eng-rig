@@ -24,24 +24,23 @@ import re
 from pathlib import Path
 
 _SKIP_SCRIPT_PREFIXES = ("_", "~$", "test_", "probe", "recon", "wave", "debug", "tmp", "scratch")
-_SKIP_DOC_STEMS = {
-    "readme", "plan", "todo", "handoff", "changelog", "timeline", "next_steps",
-    "setup", "notes", "summary", "context", "project_context", "selection",
-    "deviations", "coordination", "lessons", "portable", "prompt_for_agent",
-}
+_SKIP_DOC_STEMS = {"readme", "plan", "todo", "handoff", "changelog", "timeline", "next_steps", "setup", "notes",
+                   "summary", "context", "project_context", "selection", "deviations", "coordination", "lessons", "portable", "prompt_for_agent"}
 _DOC_REUSE_RE = re.compile(r"^---\s*\r?\nname:|资产卡|Asset Card|触发词[:：]|Triggers?[:：]", re.I | re.M)
-
 _SCORER = None
 
 
+def _load_mod(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _scorer():
-    """装载同目录 scorer（norm 规整共用；sys.path 无本目录，按文件位置装载）。"""
     global _SCORER
     if _SCORER is None:
-        spec = importlib.util.spec_from_file_location(
-            "_hub_scorer_for_ingest", Path(__file__).with_name("scorer.py"))
-        _SCORER = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(_SCORER)
+        _SCORER = _load_mod("_hub_scorer_for_ingest", Path(__file__).with_name("scorer.py"))
     return _SCORER
 
 
@@ -169,4 +168,81 @@ def atomic_write_text(path: Path, text: str) -> None:
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def aggregate_retro_proofs(recs):
+    """聚合 retro.jsonl 重复偏差（≥2 次）为证据链条目：{deviation, count, proofs}。"""
+    groups = {}
+    for r in recs:
+        d = re.sub(r"\s+", " ", (r.get("deviation") or "")).strip()
+        if not d or d.lower() == "none" or d == "无":
+            continue
+        g = groups.setdefault(d[:60], {"deviation": d[:60], "count": 0, "proofs": []})
+        g["count"] += 1
+        tag = f"{str(r.get('ts', '?'))[:10]}@{str(r.get('session') or '-')[:12]}"
+        if tag not in g["proofs"]:
+            g["proofs"].append(tag)
+    return sorted((v for v in groups.values() if v["count"] >= 2), key=lambda x: (-x["count"], x["deviation"]))
+
+
+def merge_retro_debts(existing_text, today, items):
+    """将重复偏差 proof count 原地更新或追加至待改进文本，返回 (new_text, changed, promotions)。"""
+    lines, changed = (existing_text or "# 待改进队列（retro 环产出）\n").splitlines(), 0
+    for it in items:
+        badge = f"[proof={it['count']} | 证据:{','.join(it['proofs'][-3:])}]"
+        row = f"- {today} | 重复偏差 | {it['deviation']} {badge} | 处置:升格为闸/技能或归档 | open"
+        idx = next((i for i, l in enumerate(lines)
+                    if "| 重复偏差 |" in l and it["deviation"][:35] in l and not l.rstrip().endswith("| done")), None)
+        if idx is None or lines[idx] != row:
+            lines.append(row) if idx is None else lines.__setitem__(idx, row)
+            changed += 1
+    return "\n".join(lines).rstrip() + "\n", changed, [it for it in items if it["count"] >= 3]
+
+
+def redact_staging_bytes(data: bytes, filename: str, forbidden_re, secret_res, text_exts=None):
+    """对隔离区可复用文本执行模式脱敏，返回 (redacted_bytes|None, hit_count)。禁用文件/二进制不放行。"""
+    exts = text_exts or {".py", ".js", ".ps1", ".pyw", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".sh"}
+    if forbidden_re.search(filename) or Path(filename).suffix.lower() not in exts:
+        return None, 0
+    for enc in ("utf-8", "gb18030"):
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            text = None
+    if not text:
+        return None, 0
+    hits = 0
+    for pat in secret_res:
+        text, n = pat.subn("<REDACTED>", text)
+        hits += n
+    return (text.encode(enc), hits) if hits else (None, 0)
+
+
+def rescue_staging(staging_dir: Path, inbox_dir: Path, gate_path: Path, day: str) -> int:
+    """扫描隔离区并尝试脱敏救回：仅当替换后二次预扫 0 告警时才移入 inbox。"""
+    if not staging_dir.exists() or not gate_path.is_file():
+        return 0
+    g, rescued = _load_mod("_asset_gate_redact", gate_path), 0
+    for mp in sorted(staging_dir.rglob("*.meta.json")):
+        src = mp.with_name(mp.name[:-len(".meta.json")])
+        try:
+            md, raw = json.loads(mp.read_text(encoding="utf-8")), src.read_bytes()
+        except (OSError, ValueError):
+            continue
+        red, hits = redact_staging_bytes(raw, src.name, g.FORBIDDEN, g.SECRETS, getattr(g, "TEXT_EXTS", None))
+        if not red or g._scan_bytes(src.name, red):
+            continue
+        dest = inbox_dir / (str(md.get("captured", ""))[:10] or day)
+        dest.mkdir(parents=True, exist_ok=True)
+        dst, n = dest / src.name, 1
+        while dst.exists():
+            dst, n = dest / f"{src.stem}-{n}{src.suffix}", n + 1
+        dst.write_bytes(red)
+        md.update({"status": "待蒸馏", "redacted": True, "redacted_hits": hits, "sha1": hashlib.sha1(red).hexdigest(), "size": len(red), "flags": []})
+        atomic_write_text(dst.with_name(dst.name + ".meta.json"), json.dumps(md, ensure_ascii=False, indent=1))
+        src.unlink(missing_ok=True)
+        mp.unlink(missing_ok=True)
+        rescued += 1
+    return rescued
 
