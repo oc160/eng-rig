@@ -589,8 +589,23 @@ def complete_task(tdir: Path, task_id: str, lib_root=None, skip_verify: bool = F
     return True, f"✓ 任务 {task_id} 已验收并结项 (done)", task
 
 
-def session_context(tdir: Path, session: str = "", owner: str = "", prompt: str = "", now=None) -> str:
-    """生成 ≤150 字断点续接摘要；若 prompt 点名任务号且可认领则自动认领/续租。"""
+_HUB_PROJECT_ALIASES = {"asset-hub", "成果整理", "eng-rig"}
+
+
+def _task_matches_project(task: dict, project: str) -> bool:
+    if not project:
+        return True
+    p_low = project.strip().lower()
+    t_proj = str(task.get("project") or "").strip().lower()
+    if t_proj == p_low or (p_low in _HUB_PROJECT_ALIASES and t_proj in _HUB_PROJECT_ALIASES):
+        return True
+    return any(str(g).strip().replace("\\", "/").lower().startswith(p_low + "/")
+               for g in (task.get("scope_globs") or []))
+
+
+def session_context(tdir: Path, session: str = "", owner: str = "", prompt: str = "",
+                    project: str = "", now=None) -> str:
+    """生成 ≤150 字断点续接摘要（按项目隔离）；若 prompt 点名任务号且可认领则自动认领/续租。"""
     tdir = Path(tdir)
     if not tdir.is_dir():
         return ""
@@ -598,8 +613,19 @@ def session_context(tdir: Path, session: str = "", owner: str = "", prompt: str 
         if (tdir / f"{tid}.md").is_file():
             claim_task(tdir, tid, owner=owner, session=session, now=now)
     tasks = _all_tasks(tdir)
-    mine = [t for t in tasks if lease_active(t, now=now) and _same_actor(t, session=session, owner=owner)]
+    mine = [t for t in tasks
+            if lease_active(t, now=now) and _same_actor(t, session=session, owner=owner)
+            and _task_matches_project(t, project)]
     if not mine:
+        if project:
+            handoffs = [t for t in tasks
+                        if t.get("status") != "done" and (t.get("handoff") or "").strip()
+                        and _task_matches_project(t, project)]
+            if handoffs:
+                t = handoffs[-1]
+                ho = re.sub(r"\s+", " ", t.get("handoff") or "").strip()
+                msg = f"[待接力 {t['id']}] {t.get('title', '')} | 交接:{ho}"
+                return msg[:149] + "…" if len(msg) > 150 else msg
         return ""
     t = mine[0]
     scope = ",".join(t.get("scope_globs") or []) or "*"
@@ -829,8 +855,8 @@ def cmd_task(argv: list, lib_root=None) -> int:
         return 0 if ok else 1
 
     if sub == "session-ctx":
-        txt = session_context(tdir, session=kv.get("session", ""),
-                              owner=kv.get("owner", ""), prompt=kv.get("prompt", ""))
+        txt = session_context(tdir, session=kv.get("session", ""), owner=kv.get("owner", ""),
+                              prompt=kv.get("prompt", ""), project=kv.get("project", ""))
         if "json" in flags:
             print(json.dumps({"text": txt}, ensure_ascii=False))
         elif txt:

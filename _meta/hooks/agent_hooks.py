@@ -116,16 +116,24 @@ def _session_id(data):
     return str(data.get("session_id") or data.get("conversationId") or "")
 
 
+def _project_name(data):
+    ws = data.get("workspacePaths")
+    p = (ws[0] if isinstance(ws, list) and ws else None) or data.get("cwd") or ""
+    return Path(str(p)).name if p else ""
+
+
 def _tasks_present():
     tdir = Path(os.environ.get("ASSET_HUB_TASKS_DIR", "").strip() or (LIB / ".tasks"))
     return tdir.is_dir() and any(tdir.glob("*.md"))
 
 
-def _task_ctx(prompt="", sid="", ag=False):
+def _task_ctx(prompt="", sid="", ag=False, project=""):
     if not CLI.is_file() or not _tasks_present():
         return ""
-    res = call_cli(["task", "session-ctx", "--prompt=" + prompt[:200],
-                    "--session=" + sid, "--json"], ag=ag)
+    args = ["task", "session-ctx", "--prompt=" + prompt[:200], "--session=" + sid, "--json"]
+    if project:
+        args.append("--project=" + project[:80])
+    res = call_cli(args, ag=ag)
     return (res or {}).get("text") or ""
 
 
@@ -215,7 +223,7 @@ def on_start(data=None):
     except Exception:
         pass
     msg = "EngineerRig enabled: deterministic tool/skill routing and out-of-repo script capture active." + note
-    tctx = _task_ctx(sid=_session_id(data), ag=ag)
+    tctx = _task_ctx(sid=_session_id(data), ag=ag, project=_project_name(data))
     if tctx:
         msg = msg + "\n" + tctx
     if ag:
@@ -275,7 +283,7 @@ def on_prompt(data):
         explicit_tid = "T-" in q
         due, reason = _capsule_cadence(sid, data)
         if explicit_tid or due:
-            raw_tctx = _task_ctx(prompt=q[:200], sid=sid, ag=ag)
+            raw_tctx = _task_ctx(prompt=q[:200], sid=sid, ag=ag, project=_project_name(data))
             if raw_tctx:
                 tctx = (f"[Reminder] {raw_tctx}"
                         if (reason in ("compact", "cadence") and not explicit_tid)

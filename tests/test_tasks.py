@@ -313,3 +313,18 @@ def test_cross_project_sibling_scope_globs(tmp_path):
     ok_other, msg_other = tk.check_write_scope(tdir, rev / "work" / "a.py", session="s-zc", owner="zc", lib_root=hub)
     assert not ok_other and "归属活跃任务" in msg_other
     assert tk.check_write_scope(tdir, tmp_path / "outside" / "temp.py", session="s-ag", owner="ag", lib_root=hub)[0] is True
+
+
+def test_session_context_project_isolation_and_handoff(tmp_path):
+    tdir = tmp_path / ".tasks"
+    tk.create_task(tdir, "逆向断点任务", project="逆向工程", task_id="T-96", scope_globs=["逆向工程/work/**"])
+    tk.claim_task(tdir, "T-96", owner="user@pc:zcode", session="s-zc")
+    tk.handoff_task(tdir, "T-96", note="已完成trace，剩对拍")
+
+    # 同项目下即使换了另一客户端（Antigravity 无 T-96 点名），也能自动看到待接力提示
+    ctx_rev = tk.session_context(tdir, session="s-ag", owner="user@pc:antigravity", project="逆向工程")
+    assert "[待接力 T-96]" in ctx_rev and "已完成trace" in ctx_rev
+
+    # 切到《成果整理》项目窗口时，完全隔离，不串台注入《逆向工程》任务
+    assert tk.session_context(tdir, session="s-zc", owner="user@pc:zcode", project="成果整理") == ""
+    assert tk.session_context(tdir, session="s-ag", owner="user@pc:antigravity", project="成果整理") == ""
