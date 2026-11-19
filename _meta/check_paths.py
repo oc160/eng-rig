@@ -261,10 +261,10 @@ def check_internal_refs(root=LIB):
                 raw = m.group(1).strip().strip("<>").split()[0]
                 if not raw or raw.startswith(("#", "http://", "https://", "mailto:", "file://", "conversation://")):
                     continue
-                if any(c in raw for c in "<>{}*$"):
+                if any(c in raw for c in "<>{}*$") or "..." in raw:
                     continue
                 tgt = raw.split("#", 1)[0].split("?", 1)[0]
-                if not tgt:
+                if not tgt or not tgt.strip("."):
                     continue
                 if not (mf.parent / tgt).resolve().exists() and not (root_p / tgt).resolve().exists():
                     key = (rel_doc, raw)

@@ -7,7 +7,7 @@
 | Hook Signal | Meaning | Required Action |
 | :--- | :--- | :--- |
 | `EngineerRig enabled: ...` | SessionStart confirmation & skill-link self-heal status | Acknowledge silently; do not echo to user |
-| `Candidate: <name> — <summary> \| <path> [(Related: ...)]` | High-confidence (`score >= 9.3`) asset match | Read `<path>` first; reuse if applicable, or escalate cleanly |
+| `Candidate: <name> — <summary> \| <path>` | High-confidence (`score >= 9.3`) asset match | Read `<path>` first; reuse if applicable, or escalate cleanly |
 | `[Task Capsule T-xxx] <title> \| Scope:<globs> \| Todo:<items>` | Active task capsule context (Turn 1) | Work strictly within `Scope` starting from the first unfinished subtask |
 | `[Reminder] [Task Capsule T-xxx] ...` | Post-compaction or 12-turn cadence reminder | Re-verify active `Scope` and unfinished subtasks before editing files |
 | `PreToolUse deny` | Target file is outside active `scope_globs` or locked by another session | Stop writing to that path immediately; hand off or request scope update |
