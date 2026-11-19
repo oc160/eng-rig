@@ -1,0 +1,180 @@
+{
+ "version": 2,
+ "generated": "2026-11-19T13:00:26",
+ "fingerprint": "bbb7288c446f5f4acfa4c7e26c27be8e9c9fb032",
+ "entry_count": 5,
+ "dropped_rows": [],
+ "assets": [
+  {
+   "id": "skill:multi-agent-protocol",
+   "kind": "skill",
+   "name": "multi-agent-protocol",
+   "summary": "Coordinate multi-agent, cross-session, and cro",
+   "text": "Coordinate multi-agent, cross-session, and cross-device tasks via Git-Native single-file task capsules (.tasks/<id>.md) with TTL leases, PreToolUse scope guards, and verify_cmd gates. Triggers: task capsule, multi-agent collaboration, task board, agent handoff, task dispatch, cross-agent sync. Do not use: real-time communication (use WebSocket), real-time whiteboard.",
+   "triggers": [
+    "task capsule",
+    "multi-agent collaboration",
+    "task board",
+    "agent handoff",
+    "task dispatch",
+    "cross-agent sync"
+   ],
+   "anti_triggers": [
+    "real-time communication",
+    "real-time whiteboard"
+   ],
+   "path": "skills/multi-agent-protocol/SKILL.md",
+   "visibility": "internal"
+  },
+  {
+   "id": "skill:oss-absorb",
+   "kind": "skill",
+   "name": "oss-absorb",
+   "summary": "Evaluate, security-audit, and distill external",
+   "text": "Evaluate, security-audit, and distill external open-source GitHub repositories or paper mechanisms into EngineerRig. Triggers: absorb open source, evaluate github repo, extract oss skill, distill repo, oss-absorb. Do not use: tweaking internal scripts, running existing assets.",
+   "triggers": [
+    "absorb open source",
+    "evaluate github repo",
+    "extract oss skill",
+    "distill repo",
+    "oss-absorb"
+   ],
+   "anti_triggers": [
+    "tweaking internal scripts",
+    "running existing assets"
+   ],
+   "path": "skills/oss-absorb/SKILL.md",
+   "visibility": "internal"
+  },
+  {
+   "id": "skill:session-close",
+   "kind": "skill",
+   "name": "session-close",
+   "summary": "Run atomic session-close verification (_meta/s",
+   "text": "Run atomic session-close verification (_meta/session_close.py), record structured retro, verify skill links and git sync status until exit code 0. Triggers: close session, wrap up, finish session, pre-close check, session-close, session_close. Do not use: mid-task pause when work is still in progress.",
+   "triggers": [
+    "close session",
+    "wrap up",
+    "finish session",
+    "pre-close check",
+    "session-close",
+    "session_close"
+   ],
+   "anti_triggers": [],
+   "path": "skills/session-close/SKILL.md",
+   "visibility": "internal"
+  },
+  {
+   "id": "skill:task-intake",
+   "kind": "skill",
+   "name": "task-intake",
+   "summary": "Align scope, acceptance criteria, existing ass",
+   "text": "Align scope, acceptance criteria, existing asset reuse, and implementation path before starting a new engineering task. Triggers: new task, clarify requirements, task scope, acceptance criteria, before coding, task-intake. Do not use: continuing an in-progress task, trivial one-line edits, or session close.",
+   "triggers": [
+    "new task",
+    "clarify requirements",
+    "task scope",
+    "acceptance criteria",
+    "before coding",
+    "task-intake"
+   ],
+   "anti_triggers": [
+    "trivial one-line edits",
+    "or session close"
+   ],
+   "path": "skills/task-intake/SKILL.md",
+   "visibility": "internal"
+  },
+  {
+   "id": "entry:taskintakeskill",
+   "kind": "entry",
+   "name": "task-intake skill",
+   "summary": "Align scope, acceptance, and reuse befor",
+   "text": "Align scope, acceptance, and reuse before starting a non-trivial task **task-intake skill** `skills/task-intake/SKILL.md`",
+   "triggers": [
+    "Align scope",
+    "acceptance",
+    "and reuse before starting a non-trivial task"
+   ],
+   "path": "skills/task-intake/SKILL.md",
+   "visibility": "internal",
+   "anti_triggers": [
+    "trivial one-line edits",
+    "or session close"
+   ]
+  },
+  {
+   "id": "entry:multiagentprotocolskill",
+   "kind": "entry",
+   "name": "multi-agent-protocol skill",
+   "summary": "Coordinate multi-agent tasks with TTL le",
+   "text": "Coordinate multi-agent tasks with TTL leases, scope guards, and delta handoffs **multi-agent-protocol skill** `skills/multi-agent-protocol/SKILL.md` (`_meta/hub/tasks.py`)",
+   "triggers": [
+    "Coordinate multi-agent tasks with TTL leases",
+    "scope guards",
+    "and delta handoffs"
+   ],
+   "path": "skills/multi-agent-protocol/SKILL.md",
+   "visibility": "internal",
+   "anti_triggers": [
+    "real-time communication",
+    "real-time whiteboard"
+   ]
+  },
+  {
+   "id": "entry:sessioncloseskill",
+   "kind": "entry",
+   "name": "session-close skill",
+   "summary": "Close a session, record retro, and verif",
+   "text": "Close a session, record retro, and verify git/links atomically **session-close skill** `skills/session-close/SKILL.md` (`_meta/session_close.py`)",
+   "triggers": [
+    "Close a session",
+    "record retro",
+    "and verify git",
+    "links atomically"
+   ],
+   "path": "skills/session-close/SKILL.md",
+   "visibility": "internal"
+  },
+  {
+   "id": "entry:ossabsorbmetaskill",
+   "kind": "entry",
+   "name": "oss-absorb meta-skill",
+   "summary": "Evaluate and distill an external GitHub ",
+   "text": "Evaluate and distill an external GitHub repository or paper safely **oss-absorb meta-skill** `skills/oss-absorb/SKILL.md`",
+   "triggers": [
+    "Evaluate and distill an external GitHub repository or paper safely"
+   ],
+   "path": "skills/oss-absorb/SKILL.md",
+   "visibility": "internal",
+   "anti_triggers": [
+    "tweaking internal scripts",
+    "running existing assets"
+   ]
+  },
+  {
+   "id": "entry:clean_markdowndemoscript",
+   "kind": "entry",
+   "name": "clean_markdown demo script",
+   "summary": "Normalize markdown headings and trailing",
+   "text": "Normalize markdown headings and trailing whitespace via stdlib CLI **clean_markdown demo script** `scripts/demo/clean_markdown.py`",
+   "triggers": [
+    "Normalize markdown headings and trailing whitespace via stdlib CLI"
+   ],
+   "path": "scripts/demo/clean_markdown.py",
+   "visibility": "internal"
+  },
+  {
+   "id": "script:scripts/demo/clean_markdown.py",
+   "kind": "script",
+   "name": "clean_markdown.py",
+   "summary": "python scripts/demo/clean_markdown.py input.md",
+   "text": "# -*- coding: utf-8 -*- # ── Asset Card ──────────────────────────────────────────── # Name: clean_markdown.py -- Normalize markdown headings and trailing whitespace # Source: EngineerRig public seed example (stdlib demo) # Extracted: 2026-11-16 # Author: EngineerRig # Verification: python scripts/demo/clean_markdown.py --help # Command: python scripts/demo/clean_markdown.py input.md [output.md] (sys.argv CLI) # Depe EngineerRig public seed example (stdlib demo) Python stdlib only Pass markdown file path via sys.argv to normalize headings and whitespace python scripts/demo/clean_markdown.py --help",
+   "triggers": [
+    "clean_markdown"
+   ],
+   "path": "scripts/demo/clean_markdown.py",
+   "visibility": "internal"
+  }
+ ]
+}

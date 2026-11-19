@@ -1,0 +1,14 @@
+# 凭据拦截词表（通用示例，入库）
+#
+# 用法：每行一个扩展正则（POSIX ERE，grep -E 语法；不支持 (?i) 内联标志，大小写由钩子 -i 处理）。
+#       # 开头为注释，空行忽略；多行按 | 合并。
+# 本文件只放"通用模式"，不放任何真实口令——真实口令请写入同级 cred-patterns.local（已被 .gitignore 排除）。
+# 钩子按 local → example 的顺序加载：找到 local 就用 local（示例词表不参与）；否则用本文件兜底并打印提示。
+#
+# 注：密码值统一避开引号与空白，覆盖 python/ps1/js/sh 常见写法。
+
+(password|passwd|pwd)[[:space:]]*[:=][[:space:]]*["'][^"'\ ]{6,}["']
+
+(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)[[:space:]]*[:=][[:space:]]*["'][A-Za-z0-9_-]{16,}["']
+
+-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----

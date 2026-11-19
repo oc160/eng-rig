@@ -1,0 +1,57 @@
+# Client Capability Matrix (Cross-Agent Portability)
+# level: L1 = Full automatic (skills + lifecycle hooks + git gates)
+#        L2 = Semi-automatic (skills + CLI routing + git gates)
+#        L3 = Universal fallback (direct skill/index file reading + CLI)
+version: 2026-11-19
+
+hosts:
+  claude-code:
+    display: Claude Code
+    skills_dir: "~/.claude/skills"
+    instructions: ["CLAUDE.md", "AGENTS.md"]
+    hooks: true
+    mcp: true
+    level: L1
+    notes: Full lifecycle hook integration and skill linking via asset init
+  antigravity:
+    display: Google Antigravity
+    skills_dir: ".agents/skills + ~/.gemini/config/skills"
+    instructions: ["AGENTS.md"]
+    hooks: true
+    mcp: true
+    level: L1
+    notes: Workspace and global skill junctions + .agents/hooks.json lifecycle hooks
+  codex:
+    display: Codex CLI
+    skills_dir: "~/.codex/skills"
+    instructions: ["AGENTS.md"]
+    hooks: true
+    mcp: true
+    level: L2
+    notes: Auto-bridged skills when ~/.codex is present; Git pre-commit/pre-push hooks active
+  cursor:
+    display: Cursor
+    skills_dir: "~/.cursor/skills"
+    instructions: [".cursor/rules", "AGENTS.md"]
+    hooks: false
+    mcp: true
+    level: L2
+    notes: Auto-bridged skills when ~/.cursor is present; run asset gates or git hooks before commit
+  windsurf:
+    display: Windsurf
+    skills_dir: "~/.codeium/windsurf/skills"
+    instructions: [".windsurfrules", "AGENTS.md"]
+    hooks: false
+    mcp: true
+    level: L2
+    notes: Auto-bridged skills when ~/.codeium/windsurf is present
+
+conformance:
+  - id: discover
+    check: Client discovers linked skills in skills/
+  - id: trigger
+    check: Prompt triggers session-close or task-intake appropriately
+  - id: gate
+    check: Committing a script under scripts/ without an 8-line Asset Card is blocked
+  - id: route
+    check: asset_cli.py find "clean markdown" returns top candidates in <10ms

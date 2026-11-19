@@ -1,0 +1,43 @@
+#!/bin/bash
+# 成果整理 pre-push 钩子（canonical 在 _meta/hooks/pre-push，install.ps1 装配 shim）
+# 职责：仅在推送代码主分支时跑核心冒烟测试子集（路由/索引/四闸/任务胶囊），
+#       放行独立轻量 tasks 分支（保证 asset task sync 0.3s 秒级同步）。
+# 紧急跳过：SKIP_PUSH_SMOKE=1 git push ...（写 .gate.log 留痕，便于事后追）
+set -u
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo .)
+GATELOG="$ROOT/.git/hooks/.gate.log"
+ZERO=0000000000000000000000000000000000000000
+
+RUN_SMOKE=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "${local_ref:-}" ] || continue
+  [ "$local_sha" = "$ZERO" ] && continue
+  case "$local_ref" in
+    refs/heads/tasks) continue ;;
+    *) RUN_SMOKE=1 ;;
+  esac
+done
+
+if [ "$RUN_SMOKE" -eq 0 ]; then
+  exit 0
+fi
+
+if [ "${SKIP_PUSH_SMOKE:-0}" = "1" ]; then
+  echo "! [pre-push] SKIP_PUSH_SMOKE=1 已跳过冒烟（已记 .gate.log）" >&2
+  echo "$(date '+%F %T') skip_push_smoke" >> "$GATELOG" 2>/dev/null
+  exit 0
+fi
+
+TESTS=""
+for t in tests/test_routing_dataset.py tests/test_index_build.py tests/test_gate_check.py tests/test_tasks.py tests/test_arch_metrics.py tests/test_export_public.py; do
+  [ -f "$ROOT/$t" ] && TESTS="$TESTS $t"
+done
+[ -z "$TESTS" ] && exit 0
+
+if ! (cd "$ROOT" && python -m pytest -q $TESTS); then
+  echo "✗ [pre-push] 冒烟子集未通过，阻断推送（紧急绕过：SKIP_PUSH_SMOKE=1 git push ...）" >&2
+  echo "$(date '+%F %T') push_smoke_fail" >> "$GATELOG" 2>/dev/null
+  exit 1
+fi
+echo "✓ pre-push 核心冒烟通过"
+exit 0

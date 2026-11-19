@@ -1,0 +1,131 @@
+#!/bin/bash
+# 成果整理 monorepo pre-commit 钩子（canonical 在 _meta/hooks/pre-commit，install.ps1 装配）
+# 1) 凭据模式拦截（词表外置：_meta/hooks/cred-patterns.local 本机私密 + .example 通用兜底）
+# 2) 新入库脚本必须有"资产卡"头（前 4000 字节含 资产卡 标记）
+# 3) 卡-码一致性（B-0012）：卡内 用法/重跑命令 行声称 argv 化，代码必须真含 sys.argv
+# 拒绝时 exit 1；跳过（紧急）：git commit --no-verify
+#
+# 2026-10-20 架构评估止血：
+#   - 暂存清单改用 -z + core.quotepath=false：中文/空格路径不再被静默跳过（原实现全部 SKIP）
+#   - 凭据词表外置，钩子不再内联明文口令
+set -u
+FAIL=0
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo .)
+HOOKDIR="$ROOT/_meta/hooks"
+GATELOG="$ROOT/.git/hooks/.gate.log"   # 本地拦截日志（.git 内，不入库）：让"拦过什么"可查
+
+load_patterns() {
+  local f out
+  for f in "$HOOKDIR/cred-patterns.local" "$HOOKDIR/cred-patterns.example"; do
+    [ -f "$f" ] || continue
+    out=$(grep -v '^[[:space:]]*#' "$f" | grep -v '^[[:space:]]*$' | paste -sd'|' -)
+    if [ -n "$out" ]; then
+      [ "$f" = "$HOOKDIR/cred-patterns.example" ] && \
+        echo "! [凭据] 未找到本机词表，使用通用示例词表（_meta/hooks/cred-patterns.local 可加强）" >&2
+      printf '%s' "$out"
+      return 0
+    fi
+  done
+  return 1
+}
+CRED_PATTERNS=$(load_patterns || true)
+
+while IFS= read -r -d '' f; do
+  [ -n "$f" ] || continue
+  [ -f "$f" ] || continue
+  case "$f" in
+    _meta/hooks/pre-commit|_meta/hooks/cred-patterns.local) continue ;;
+  esac
+  if [ -n "$CRED_PATTERNS" ] && git diff --cached -- "$f" | grep -qiE "^\+.*($CRED_PATTERNS)"; then
+    echo "✗ [凭据] $f 暂存内容命中敏感模式（见 _meta/敏感排除清单.md）"
+    echo "$(date '+%F %T') cred $f" >> "$GATELOG" 2>/dev/null
+    FAIL=1
+  fi
+  case "$f" in
+    *.py|*.js|*.ps1|*.pyw)
+      if [ "${f#scripts/}" != "$f" ] || [ "${f#snippets/}" != "$f" ]; then
+        if ! head -c 4000 "$f" | grep -qE "资产卡|Asset Card"; then
+          echo "✗ [资产卡] $f 是新入库脚本但头部 4000 字节内无『资产卡』（格式见 _meta/手册.md §一）"
+          echo "$(date '+%F %T') assetcard $f" >> "$GATELOG" 2>/dev/null
+          FAIL=1
+        fi
+        # 卡-码一致性：资产卡 用法/重跑命令 行（含缩进续行）含 argv 字样 → 代码必须真用 sys.argv
+        # 注意 sys.argv 检查只看非注释行——卡自身声称行是 # 注释，不能自证（C2 演练实证）
+        if head -n 40 "$f" | awk '
+              BEGIN { incard = 0; on = 0; found = 0 }
+              {
+                if (!incard) { if ($0 ~ /资产卡|Asset Card/) incard = 1; next }
+                if ($0 ~ /^#[ \t]*(─|---)/) exit       # 卡块结束线
+                if (++n > 30) exit                     # 卡块保险上限
+                if ($0 ~ /^#[ \t]*(用法|重跑命令|Usage|Command)[ \t]*[：:]/) on = 1
+                else if ($0 ~ /^#[ \t]*[^ \t]/) on = 0 # 其他键行（产出AI/验证方式…）重置
+                if (on && $0 ~ /argv/) { found = 1; exit }
+              }
+              END { exit !found }
+            ' && ! grep -v '^[[:space:]]*#' "$f" | grep -q "sys\.argv"; then
+          echo "✗ [卡码] $f 资产卡『用法/重跑命令』声称 argv 化，但代码不含 sys.argv（B-0012 卡-码失实）"
+          echo "$(date '+%F %T') cardcode $f" >> "$GATELOG" 2>/dev/null
+          FAIL=1
+        fi
+      fi
+      ;;
+  esac
+done < <(git -c core.quotepath=false diff --cached --name-only -z --diff-filter=ACM)
+
+# 第四闸：路径/技能自检（0.05s）。拦"改了目录/改名但没同步指针"的漂移入库。
+# 紧急绕过：SKIP_PATH_GATE=1 git commit ...（绕过会写日志，便于事后追）
+if [ "${SKIP_PATH_GATE:-0}" != "1" ] && [ -f "$ROOT/_meta/check_paths.py" ]; then
+  if ! python "$ROOT/_meta/check_paths.py" > /tmp/asset_hub_paths.$$ 2>&1; then
+    echo "✗ [路径] 路径/技能自检未通过（明细如下）："
+    sed 's/^/    /' /tmp/asset_hub_paths.$$ | head -20
+    echo "$(date '+%F %T') pathgate" >> "$GATELOG" 2>/dev/null
+    FAIL=1
+  fi
+  rm -f /tmp/asset_hub_paths.$$
+fi
+
+# 第五闸（变异点自持）：提交触及 skills/scripts/snippets/INDEX.md 时，索引必须同车最新
+NEEDS_IDX=0
+HAS_IDX=0
+NEEDS_ARCH=0
+NEEDS_YAML_DATE=0
+while IFS= read -r -d '' sf; do
+  case "$sf" in
+    _meta/index/asset-index.json) HAS_IDX=1 ;;
+    skills/*|scripts/*|snippets/*|INDEX.md) NEEDS_IDX=1 ;;
+    _meta/*.py|_meta/hub/*.py|_meta/hooks/*.py) NEEDS_ARCH=1 ;;
+    _meta/规范版本表.yaml) NEEDS_YAML_DATE=1 ;;
+  esac
+done < <(git -c core.quotepath=false diff --cached --name-only -z)
+if [ "$NEEDS_IDX" -eq 1 ] && [ "$HAS_IDX" -eq 0 ] && [ -f "$ROOT/_meta/asset_cli.py" ] && [ -f "$ROOT/_meta/index/asset-index.json" ]; then
+  if ! python "$ROOT/_meta/asset_cli.py" index --check > /dev/null 2>&1; then
+    echo "✗ [索引] 暂存区变更了 skills/scripts/snippets/INDEX.md，但 _meta/index/asset-index.json 过期未同车暂存"
+    echo "    请运行：python _meta/asset_cli.py index && git add -- _meta/index/asset-index.json"
+    echo "$(date '+%F %T') indexdrift" >> "$GATELOG" 2>/dev/null
+    FAIL=1
+  fi
+fi
+
+# 第六闸（架构边界）：修改 _meta 治理件时校验行数基线 + AST 零未审计依赖/网络调用
+if [ "$NEEDS_ARCH" -eq 1 ] && [ -f "$ROOT/_meta/arch_metrics.py" ]; then
+  if ! python "$ROOT/_meta/arch_metrics.py" --check > /tmp/asset_hub_arch.$$ 2>&1; then
+    echo "✗ [架构] _meta 治理件基线或静态边界审计未通过："
+    sed 's/^/    /' /tmp/asset_hub_arch.$$ | head -20
+    echo "$(date '+%F %T') archgate" >> "$GATELOG" 2>/dev/null
+    FAIL=1
+  fi
+  rm -f /tmp/asset_hub_arch.$$
+fi
+
+# 第七闸（YAML 日期）：修改 _meta/规范版本表.yaml 时本地先拦未加引号日期（单源 DATE_LINE）
+if [ "$NEEDS_YAML_DATE" -eq 1 ] && [ -f "$ROOT/_meta/规范版本表.yaml" ] && [ -f "$ROOT/_meta/gate_check.py" ]; then
+  if ! python -c "import importlib.util, sys; from pathlib import Path; sp=importlib.util.spec_from_file_location('gc', sys.argv[1]); m=importlib.util.module_from_spec(sp); sp.loader.exec_module(m); hits=m.DATE_LINE.findall(Path(sys.argv[2]).read_text(encoding='utf-8', errors='replace')); sys.exit(1 if hits else 0)" "$ROOT/_meta/gate_check.py" "$ROOT/_meta/规范版本表.yaml"; then
+    echo "✗ [YAML] _meta/规范版本表.yaml 含未加引号日期（须用双引号 \"YYYY-MM-DD\"）"
+    echo "$(date '+%F %T') yamldate" >> "$GATELOG" 2>/dev/null
+    FAIL=1
+  fi
+fi
+
+[ $FAIL -eq 0 ] && echo "✓ pre-commit 通过（凭据 + 资产卡 + 卡码 + 路径 + 索引 + 架构边界）"
+
+exit $FAIL

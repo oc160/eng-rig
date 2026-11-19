@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: python -m pip install pytest>=8.0
+      - name: Build index & run self-enforcing gates
+        run: |
+          python _meta/asset_cli.py index
+          python _meta/arch_metrics.py --check
+          python _meta/gate_check.py --root .
+          python _meta/check_paths.py
+          python -m pytest -q

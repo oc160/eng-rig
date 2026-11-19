@@ -1,0 +1,85 @@
+#!/bin/bash
+# 资产库服务端闸（225 bare repo 的 pre-receive）—— 执法外置版（reviewer 评审 2026-10-27 修正）
+#
+# 铁律：执法程序永远来自仓外固定位置 $HOME/gate/asset-hub/gate_check.py（owner 显式部署），
+#       绝不执行推送内容自带的 _meta/gate_check.py——改扫描器≠改执法。
+#       服务端也不跑推送内容自带的 tests（pytest 档已删，reviewer 复审 B6）——
+#       那等于让被检者以钩子权限执行任意代码。
+# fail-closed：执法件缺失即拒收（宁可错杀，不可无闸放行）。
+#
+# 安装（225 上）：
+#   1) 工作站跑 bash _meta/hooks/deploy_gate.sh   （部署执法件到 $HOME/gate/asset-hub/）
+#   2) cp pre-receive <bare>/hooks/pre-receive && chmod +x <bare>/hooks/pre-receive
+set -u
+ZERO=0000000000000000000000000000000000000000
+FAIL=0
+
+GATE="$HOME/gate/asset-hub/gate_check.py"
+if [ ! -f "$GATE" ]; then
+  echo "✗ [服务端] 执法程序缺失：$GATE（owner 部署后才可推送，fail-closed）"
+  exit 1
+fi
+
+PY=""
+for cand in python3 python py; do
+  # 只认"真的能跑"的解释器：Windows 上 command -v python3 常命中 WindowsApps 存根，
+  # 存在但执行空转非零——不校验就会让每次推送都误判为"闸未通过"。
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import sys" >/dev/null 2>&1; then
+    PY=$cand; break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "✗ [服务端] 未找到可用的 Python 3（试过 python3/python/py）"
+  exit 1
+fi
+
+while read -r oldrev newrev refname; do
+  case "$refname" in
+    refs/heads/*|refs/tags/*) ;;                # 分支与 tag 都查（tag 先行引入含密对象再由分支引用=绕过链）
+    *) continue ;;
+  esac
+  [ "$newrev" = "$ZERO" ] && continue          # 删 ref 不检查
+
+  # ① 推送差集 blob 扫描：按 oldrev 定界（对象即使已被其他 ref 可达，对本 ref 新引入即扫）
+  if ! "$PY" "$GATE" --git-dir . --push "$newrev" --old "$oldrev"; then
+    echo "✗ [服务端] 新增对象含违规内容：$refname（修复后重推）"
+    FAIL=1
+  fi
+
+  # ①.5 执法两端漂移拦截：推送修改/引入 _meta/gate_check.py 时，必须与 225 部署版（$GATE）一致
+  # 统一去 \r 后算 SHA-256，免疫 Windows CRLF 与 Linux LF 行尾差异
+  GATE_CHANGED=0
+  if [ "$oldrev" = "$ZERO" ]; then
+    git ls-tree --name-only "$newrev" -- _meta/gate_check.py | grep -q "_meta/gate_check.py" && GATE_CHANGED=1
+  else
+    git diff --name-only "$oldrev" "$newrev" -- _meta/gate_check.py | grep -q "_meta/gate_check.py" && GATE_CHANGED=1
+  fi
+  if [ "$GATE_CHANGED" -eq 1 ]; then
+    SHA_DEPLOY=$("$PY" -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read().replace(b'\r',b'')).hexdigest())" "$GATE")
+    SHA_PUSH=$(git cat-file blob "$newrev:_meta/gate_check.py" 2>/dev/null | "$PY" -c "import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read().replace(b'\r',b'')).hexdigest())")
+    if [ "$SHA_DEPLOY" != "$SHA_PUSH" ]; then
+      echo "✗ [服务端] _meta/gate_check.py 与 225 部署版不一致（两端执法漂移）："
+      echo "    部署版=$SHA_DEPLOY  推送版=$SHA_PUSH"
+      echo "    请先运行：bash _meta/hooks/deploy_gate.sh  同步服务端执法件后再重推"
+      FAIL=1
+    fi
+  fi
+
+  # ② 新 tip 树级检查（--worktree-attributes：无视推送内容 .gitattributes 的
+  #    export-ignore/export-subst——被检树必须等于真实 tip，reviewer 复审 B3）
+  TMP=$(mktemp -d)
+  if ! git archive --worktree-attributes "$newrev" 2>/dev/null | tar -x -C "$TMP" 2>/dev/null; then
+    echo "✗ [服务端] 无法解包 $refname ($newrev)"
+    rm -rf "$TMP"; exit 1
+  fi
+
+  if ! "$PY" "$GATE" --root "$TMP"; then
+    echo "✗ [服务端] 闸未通过：$refname（修复后重推）"
+    FAIL=1
+  fi
+
+  rm -rf "$TMP"
+done
+
+[ $FAIL -eq 0 ] && echo "✓ [服务端] 闸通过（差集 blob 扫描 + 树检查，执法件=仓外固定版）"
+exit $FAIL

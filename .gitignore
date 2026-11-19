@@ -1,0 +1,32 @@
+# 临时/缓存
+*.tmp
+*.bak
+~$*
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+node_modules/
+
+# 工具自身状态
+.zcode/
+
+# 每机配置（挂载解析），不入库
+_meta/本机挂载配置.yaml
+
+# 本机凭据词表（真实口令只存本机；通用兜底见 cred-patterns.example）
+_meta/hooks/cred-patterns.local
+
+# 体检漏跑检测标记（运行时状态，W1-4）
+_meta/.last_health_check
+
+# Antigravity 库内桥接目录（install.ps1 生成的 junction，本机挂载解析，不入库）
+.agents/
+
+# 动静分离（2026-11-16 Antigravity 首评 P1-1）：捕获件不占主树/git 状态，蒸馏成正式资产才入库；灾备走 backup.py asset-inbox 通道
+_meta/inbox/
+
+# 多代理任务胶囊（2026-11-16 重构）：运行时状态走独立 tasks 分支同步，不占 master 工作树
+.tasks/
