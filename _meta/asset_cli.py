@@ -1286,6 +1286,8 @@ COMMANDS = {"find": cmd_find, "show": cmd_show, "index": cmd_index, "doctor": cm
 
 
 def main():
+    for _s in (sys.stdout, sys.stderr):
+        hasattr(_s, "reconfigure") and _s.reconfigure(encoding="utf-8", errors="replace")
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print(__doc__)
         return 0 if len(sys.argv) > 1 else 2

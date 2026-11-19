@@ -88,6 +88,8 @@ def judge(norm, text, end, exists):
     if exists(norm):
         return "ok"
     parent = str(Path(norm).parent).replace("\\", "/")
+    if re.fullmatch(r"[A-Za-z]:", parent):
+        parent += "/"
     if truncation_suspect(text, end) and exists(parent):
         return "suspect"
     return "missing"

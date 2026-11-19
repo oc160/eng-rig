@@ -23,6 +23,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(encoding="utf-8", errors="replace")
+
 LIB = Path(__file__).resolve().parent.parent
 HOOK = LIB / "_meta" / "hooks" / "agent_hooks.py"
 CONFIG = Path(os.environ.get("ZCODE_CONFIG", str(Path.home() / ".zcode" / "cli" / "config.json")))

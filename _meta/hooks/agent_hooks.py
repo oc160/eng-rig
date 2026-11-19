@@ -26,6 +26,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(encoding="utf-8", errors="replace")
+
 LIB = Path(__file__).resolve().parents[2]
 CLI = LIB / "_meta" / "asset_cli.py"
 SKIP_PROMPTS = ("继续", "好", "可以", "行", "ok", "yes", "嗯", "对", "不用", "停")
