@@ -18,3 +18,9 @@
 4. **Stage exact paths**: Always `git add -- <exact_paths>` (never `git add -A`). Run `python _meta/asset_cli.py index` when skills or scripts change.
 5. **Low-noise attribution**: Mention a reused asset naturally only when it materially helped; never store one-off temporary instructions as permanent rules.
 6. **Atomic close**: Finish with `python _meta/asset_cli.py close --retro="task|reused|deviation|produced"`.
+
+## Escalation Boundaries & Review Discipline
+
+- **Ask before irreversible actions**: Stop for human approval before modifying engineering formulas or physical bounds, writing to read-only upstream software/databases, pushing to external remotes, deleting permanent workspace files, or releasing quarantined secret files.
+- **Autonomous execution**: Adding tests, fixing verified bugs, local refactoring, exact-path commits, index rebuilds, and running close checks proceed autonomously.
+- **Cross-model review discipline**: Keep reviewers read-only; report only real bugs, math/unit errors, or contract violations (no style nitpicks); cap review loops at 3 rounds and halt after 2 consecutive gate failures.

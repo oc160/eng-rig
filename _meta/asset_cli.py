@@ -193,7 +193,8 @@ def build_index():
         "entry_count": parsed,
         "dropped_rows": dropped,
         "assets": assets,
-        "boundaries": H.boundary_assets(LIB / "_meta" / "能力边界台账.yaml"),
+        "boundaries": (H.boundary_assets(LIB / "_meta" / "能力边界台账.yaml")
+                       + C.parse_decisions_md(LIB / "_meta" / "决策记忆.md")),
     }
 
 
@@ -525,7 +526,8 @@ def cmd_find(argv):
         for r in rels:
             print(f"- [同类思路] {r['name']}（{r['kind']}）：{r['summary']} → {r['path']}")
         for _, b in b_hits:
-            print(f"- [边界避坑] {b['name']}：{b['summary']} → {b['path']}")
+            tag = "决策记忆" if b.get("kind") == "decision" else "边界避坑"
+            print(f"- [{tag}] {b['name']}：{b['summary']} → {b['path']}")
         print('用法：让 AI 读取上述 SKILL.md/资产卡后执行；手动查询 asset find "<任务原话>"')
         return 0
     if "--json" in argv:
@@ -547,7 +549,7 @@ def cmd_find(argv):
         for r in rels:
             print(f"   ↳ [{r['kind']}] {r['name']} — {r['summary']} | {r['path']}")
     if b_hits:
-        print("⚠ 能力边界避坑（已知现象/退路）：")
+        print("⚠ 已知边界与已拍板决策：")
         for _, b in b_hits:
             print(f"   ↳ [{b['name']}] {b['summary']} | {b['path']}")
     if stale:

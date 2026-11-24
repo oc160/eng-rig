@@ -17,6 +17,7 @@
 续行：以 # 开头且比键行多缩进的行并入上一键值。
 """
 import re
+from pathlib import Path
 
 FIELDS = ("名称", "来源", "提取日期", "产出AI", "验证方式", "重跑命令", "依赖", "用法")
 EN_MAP = {
@@ -74,3 +75,38 @@ def card_fields_text(text: str, cap: int = 400) -> str:
     c = parse_asset_card(text)
     parts = [c[k] for k in ("来源", "依赖", "用法", "验证方式") if c[k]]
     return (" ".join(parts))[:cap]
+
+
+_DEC_RE = re.compile(r"^-\s+(\d{4}-\d{2}-\d{2})\s*\|\s*([DN]-\d+)\s*\|\s*([^|]+)\|\s*([^|]+?)(?:\s*\|\s*关键词[:：]\s*(.+))?$")
+
+
+def parse_decisions_md(md_path) -> list:
+    """解析决策记忆（已拍板/明确不做），供 find 并行提示而不扰动 assets IDF 基线。"""
+    p = Path(md_path) if md_path else None
+    if not p or not p.is_file():
+        return []
+    tag, out = "已拍板", []
+    for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = ln.strip()
+        if s.startswith("## "):
+            tag = "明确不做" if "不做" in s else "已拍板"
+            continue
+        m = _DEC_RE.match(s)
+        if not m:
+            continue
+        _, did, scope, conclusion, kws = m.groups()
+        scope, conclusion = scope.strip(), conclusion.strip()
+        raw_t = [did, scope] + re.split(r"[,，、/\s]+", kws or "")
+        trigs = list(dict.fromkeys(t.strip() for t in raw_t if len(t.strip()) >= 2))[:16]
+        out.append({
+            "id": f"decision:{did}",
+            "kind": "decision",
+            "name": f"{tag} {did} ({scope})",
+            "summary": re.sub(r"\s+", " ", conclusion).replace("|", "/")[:88],
+            "text": f"{did} {tag} {scope} {conclusion} {' '.join(trigs)}"[:600],
+            "triggers": trigs,
+            "anti_triggers": [],
+            "path": "_meta/决策记忆.md",
+            "visibility": "internal",
+        })
+    return out
