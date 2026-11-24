@@ -263,6 +263,10 @@ GOVERNANCE_LINE_LIMITS = {
     "_meta/hub/indexer.py": 300,
     "_meta/hub/ingest.py": 250,
     "_meta/gate_check.py": 400,
+    "_meta/export_public.py": 300,
+    "_meta/session_close.py": 420,
+    "_meta/check_paths.py": 380,
+    "_meta/hooks/agent_hooks.py": 420,
 }
 
 NET_MODULES = {"urllib", "http", "socket", "ftplib", "smtplib", "ssl", "requests", "httpx", "aiohttp"}

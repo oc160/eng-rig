@@ -35,6 +35,12 @@ while IFS= read -r -d '' f; do
   [ -f "$f" ] || continue
   case "$f" in
     _meta/hooks/pre-commit|_meta/hooks/cred-patterns.local) continue ;;
+    _meta/inbox/*)
+      echo "✗ [动静分离] $f 位于 _meta/inbox/，严禁 git add -f 强行提交进主仓（独立项目如 poolchat 请建独立 Git 仓，待蒸馏件须移入 scripts/ 或 skills/）"
+      echo "$(date '+%F %T') inboxgate $f" >> "$GATELOG" 2>/dev/null
+      FAIL=1
+      continue
+      ;;
   esac
   if [ -n "$CRED_PATTERNS" ] && git diff --cached -- "$f" | grep -qiE "^\+.*($CRED_PATTERNS)"; then
     echo "✗ [凭据] $f 暂存内容命中敏感模式（见 _meta/敏感排除清单.md）"
@@ -126,6 +132,6 @@ if [ "$NEEDS_YAML_DATE" -eq 1 ] && [ -f "$ROOT/_meta/规范版本表.yaml" ] && 
   fi
 fi
 
-[ $FAIL -eq 0 ] && echo "✓ pre-commit 通过（凭据 + 资产卡 + 卡码 + 路径 + 索引 + 架构边界）"
+[ $FAIL -eq 0 ] && echo "✓ pre-commit 通过（凭据 + 动静分离 + 资产卡 + 卡码 + 路径 + 索引 + 架构边界）"
 
 exit $FAIL

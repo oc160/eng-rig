@@ -45,7 +45,7 @@ SKIP_FILES = {LIB / "_meta" / "归档" / "原地路径救活日志.md",   # 历�
               }
 # 历史档案目录：内容是某时刻的原样留存，路径按定义会随外部目录变动而失效（同 原地路径救活日志 口径）
 SKIP_DIRS_HISTORICAL = {LIB / "_meta" / "原始需求" / "记忆快照"}
-SKIP_DIRS = {"_template", ".agents"}       # 技能模板，占位名合法
+SKIP_DIRS = {"_template", ".agents", "public_templates"}       # 技能与开源模板，占位名合法
 SKIP_PATHS = set()              # Optional local path exceptions
 
 
