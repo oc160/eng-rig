@@ -194,7 +194,8 @@ def build_index():
         "dropped_rows": dropped,
         "assets": assets,
         "boundaries": (H.boundary_assets(LIB / "_meta" / "能力边界台账.yaml")
-                       + C.parse_decisions_md(LIB / "_meta" / "决策记忆.md")),
+                       + C.parse_decisions_md(LIB / "_meta" / "决策记忆.md")
+                       + C.infra_assets(LIB / "_meta" / "内网基建清单.yaml")),
     }
 
 
@@ -526,7 +527,7 @@ def cmd_find(argv):
         for r in rels:
             print(f"- [同类思路] {r['name']}（{r['kind']}）：{r['summary']} → {r['path']}")
         for _, b in b_hits:
-            tag = "决策记忆" if b.get("kind") == "decision" else "边界避坑"
+            tag = {"decision": "决策记忆", "infra": "内网基建"}.get(b.get("kind"), "边界避坑")
             print(f"- [{tag}] {b['name']}：{b['summary']} → {b['path']}")
         print('用法：让 AI 读取上述 SKILL.md/资产卡后执行；手动查询 asset find "<任务原话>"')
         return 0
@@ -1279,8 +1280,12 @@ def cmd_ui(argv):
     )
 
 
+def cmd_infra(argv):
+    return _card().cmd_infra(argv, LIB / "_meta" / "内网基建清单.yaml")
+
+
 COMMANDS = {"find": cmd_find, "show": cmd_show, "index": cmd_index, "doctor": cmd_doctor,
-            "init": cmd_init, "close": cmd_close, "task": cmd_task,
+            "init": cmd_init, "close": cmd_close, "task": cmd_task, "infra": cmd_infra,
             "ui": cmd_ui, "dashboard": cmd_ui,
             "digest": cmd_digest, "gates": cmd_gates, "stats": cmd_stats,
             "ingest": cmd_ingest, "inbox": cmd_inbox, "inbox-triage": cmd_inbox_triage,

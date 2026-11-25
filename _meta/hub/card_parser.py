@@ -110,3 +110,87 @@ def parse_decisions_md(md_path) -> list:
             "visibility": "internal",
         })
     return out
+
+
+def parse_infra_yaml(yaml_path) -> list:
+    """纯标准库解析 _meta/内网基建清单.yaml，返回基建条目列表；文件缺失返回 []。"""
+    p = Path(yaml_path) if yaml_path else None
+    if not p or not p.is_file():
+        return []
+    out, cur, list_key = [], None, None
+    for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        if ln.startswith("- id:"):
+            cur = {"id": ln.split(":", 1)[1].strip(), "endpoints": [], "redlines": [], "docs": []}
+            out.append(cur)
+            list_key = None
+        elif cur and ln.startswith("    - ") and list_key:
+            cur[list_key].append(s[2:].strip())
+        elif cur and ln.startswith("  ") and not ln.startswith("    ") and ":" in ln:
+            k, v = ln.strip().split(":", 1)
+            v = v.strip()
+            if k in ("endpoints", "redlines", "docs"):
+                cur[k], list_key = ([v] if v else []), (k if not v else None)
+            else:
+                cur[k], list_key = v.strip("'\""), None
+    return out
+
+
+def infra_assets(yaml_path) -> list:
+    """把内网基建条目转成检索条目（归入 boundaries 通道，不偏移 assets IDF）。"""
+    out = []
+    for it in parse_infra_yaml(yaml_path):
+        iid, name, summary = it["id"], it.get("name", ""), it.get("summary", "")
+        trigs = [x.strip() for x in re.split(r"[,，、\s]+", f"{iid},{name},{it.get('triggers', '')}") if len(x.strip()) >= 2]
+        ep = "; ".join(it.get("endpoints") or [])
+        out.append({
+            "id": f"infra:{iid}",
+            "kind": "infra",
+            "name": f"{iid} ({name})" if name else iid,
+            "summary": re.sub(r"\s+", " ", f"{summary} | {ep}").replace("|", "/")[:88],
+            "text": f"{iid} {name} {summary} {ep} {it.get('usage', '')}"[:600],
+            "triggers": list(dict.fromkeys(trigs))[:18],
+            "anti_triggers": [],
+            "path": "_meta/内网基建清单.yaml",
+            "visibility": "internal",
+        })
+    return out
+
+
+def cmd_infra(argv, yaml_path) -> int:
+    """asset infra 子命令：为新项目一键输出可复用的脱敏内网基建接入说明书。"""
+    import json
+    items = parse_infra_yaml(yaml_path)
+    only = next((a.split("=", 1)[1] for a in argv if a.startswith("--only=")), "")
+    if only:
+        keys = [k.strip().lower() for k in only.split(",") if k.strip()]
+        items = [it for it in items if any(k == it["id"].lower() or k in (it["id"] + it.get("name", "")).lower() for k in keys)]
+    if "--json" in argv:
+        print(json.dumps(items, ensure_ascii=False, indent=2))
+        return 0
+    if not items:
+        print("（暂无已登记基建；可于 _meta/内网基建清单.yaml 按模板补充）")
+        return 0
+    if "--list" in argv:
+        for it in items:
+            ep0 = (it.get("endpoints") or [""])[0]
+            print(f"- {it['id']:14s} | {it.get('name', '')} | {ep0}")
+        return 0
+    print(f"# 内网可用基建清单（共 {len(items)} 项，来源 `_meta/内网基建清单.yaml`）\n")
+    for it in items:
+        print(f"## {it['id']} — {it.get('name', '')}")
+        print(f"- **定位**：{it.get('summary', '')}")
+        for e in it.get("endpoints") or []:
+            print(f"- **入口**：`{e}`")
+        if it.get("usage"):
+            print(f"- **用法**：{it['usage']}")
+        if it.get("auth_ref"):
+            print(f"- **凭据出处**：{it['auth_ref']}")
+        for r in it.get("redlines") or []:
+            print(f"- **红线**：{r}")
+        if it.get("docs"):
+            print(f"- **深入文档**：{', '.join(f'`{d}`' for d in it['docs'])}")
+        print()
+    return 0
